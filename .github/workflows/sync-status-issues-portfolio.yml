@@ -1,12 +1,14 @@
 name: Sincronizar Status com o Portfolio
 
 on:
-  project_card:
-    types: [moved] # Dispara de forma estável quando o card é arrastado de coluna
+  project_v2_item:
+    types: [edited] # Dispara quando QUALQUER campo do Project v2 (como o Status) mudar
 
 jobs:
   sync-status:
     runs-on: ubuntu-latest
+    # Garante que só vai rodar se o campo alterado no projeto foi o "Status"
+    if: github.event.changes.field_value.field_name == 'Status'
     
     steps:
       - name: Sincronizar com o Projeto Central
@@ -16,23 +18,32 @@ jobs:
           PORTFOLIO_NUMBER: 5 
         
         run: |
-          # 1. O evento project_card nos dá o ID da coluna antiga/nova. Vamos descobrir o nome textual dela.
-          COL_ID="${{ github.event.project_card.column_id }}"
-          STATUS_TEXT=$(gh api projects/columns/$COL_ID --jq '.name')
+          # 1. Identifica o ID global da Issue ou PR que foi movido
+          CONTENT_NODE_ID="${{ github.event.project_v2_item.content_node_id }}"
           
-          echo "O novo status detectado é: $STATUS_TEXT"
+          echo "Buscando o novo status textual..."
           
-          # 2. Captura a URL da Issue/PR vinculada ao card e extrai o Node ID global
-          CONTENT_URL="${{ github.event.project_card.content_url }}"
-          if [ -z "$CONTENT_URL" ] || [ "$CONTENT_URL" = "null" ]; then
-            echo "O card movido não está vinculado a uma Issue ou PR."
+          # 2. Pega o nome exato da nova coluna para onde o card foi
+          STATUS_TEXT=$(gh api graphql -f query='
+            query($item_id: ID!) {
+              node(id: $item_id) {
+                ... on ProjectV2Item {
+                  fieldValueByName(name: "Status") {
+                    ... on ProjectV2ItemFieldSingleSelectValue { name }
+                  }
+                }
+              }
+            }' -f item_id="${{ github.event.project_v2_item.id }}" --jq '.data.node.fieldValueByName.name')
+
+          if [ -z "$STATUS_TEXT" ] || [ "$STATUS_TEXT" = "null" ]; then
+            echo "Não foi possível detectar o nome da coluna."
             exit 0
           fi
-          
-          CONTENT_NODE_ID=$(gh api $CONTENT_URL --jq '.node_id')
-          echo "Sincronizando item global ($CONTENT_NODE_ID) com o projeto Portfolio ($PORTFOLIO_NUMBER)..."
 
-          # 3. Executa a query GraphQL para buscar a estrutura do Portfolio
+          echo "O novo status é: $STATUS_TEXT"
+          echo "Sincronizando com o projeto Portfolio ($PORTFOLIO_NUMBER)..."
+
+          # 3. Busca a estrutura do Portfolio para encontrar o ID da coluna equivalente
           gh api graphql -f query='
             query($org: String!, $project_num: Int!) {
               organization(login: $org) {
@@ -41,10 +52,7 @@ jobs:
                   field(name: "Status") {
                     ... on ProjectV2SingleSelectField {
                       id
-                      options {
-                        id
-                        name
-                      }
+                      options { id name }
                     }
                   }
                   items(first: 100) {
@@ -60,15 +68,14 @@ jobs:
               }
             }' -f org="$ORGANIZATION" -g project_num=$PORTFOLIO_NUMBER > projeto_info.json
 
-          # 4. Extração dos IDs internos usando o nome da coluna coletado no passo 1
           PROJECT_ID=$(jq -r '.data.organization.projectV2.id' projeto_info.json)
           FIELD_ID=$(jq -r '.data.organization.projectV2.field.id' projeto_info.json)
           OPTION_ID=$(jq -r --arg status "$STATUS_TEXT" '.data.organization.projectV2.field.options[] | select(.name==$status) | .id' projeto_info.json)
           ITEM_ID=$(jq -r --arg content "$CONTENT_NODE_ID" '.data.organization.projectV2.items.nodes[] | select(.content.id==$content) | .id' projeto_info.json)
 
-          # 5. Se o item existir no Portfolio, atualiza a coluna dele
+          # 4. Se o item existir no Portfolio, atualiza a coluna dele
           if [ "$ITEM_ID" != "null" ] && [ "$OPTION_ID" != "null" ]; then
-            echo "Item encontrado no Portfolio. Atualizando coluna..."
+            echo "Item encontrado no Portfolio. Atualizando..."
             gh api graphql -f query='
               mutation($project: ID!, $item: ID!, $field: ID!, $option: ID!) {
                 updateProjectV2ItemFieldValue(input: {
@@ -82,5 +89,5 @@ jobs:
               }' -f project="$PROJECT_ID" -f item="$ITEM_ID" -f field="$FIELD_ID" -f option="$OPTION_ID"
             echo "Sincronização concluída com sucesso!"
           else
-            echo "Aviso: O item não foi encontrado no projeto Portfolio ou a coluna '$STATUS_TEXT' não existe lá."
+            echo "Aviso: O item não está no Portfolio ou a coluna '$STATUS_TEXT' não existe lá."
           fi
