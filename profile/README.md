@@ -1,6 +1,6 @@
-# STRATO
+# E45
 
-Plataforma de produtos de software da STRATO.
+Plataforma de produtos de software da E45.
 
 ## Produtos
 
@@ -14,7 +14,7 @@ Plataforma de produtos de software da STRATO.
 
 - **Issues** vivem no repositório de cada produto.
 - O board operacional de cada produto fica no seu Project próprio.
-- A visão consolidada do portfólio está no Project **Portfólio STRATO**.
+- A visão consolidada do portfólio está no Project **Portfólio E45**.
 - Padrões de issue, PR e labels são herdados deste repositório (`.github`).
 
 ## Convenções

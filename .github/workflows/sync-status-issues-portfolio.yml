@@ -14,7 +14,7 @@ jobs:
       - name: Sincronizar com o Projeto Central
         env:
           GH_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
-          ORGANIZATION: "strato-git"
+          ORGANIZATION: "e45-git"
           PORTFOLIO_NUMBER: 5 
         
         run: |

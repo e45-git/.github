@@ -1,5 +1,5 @@
 name: 🐞 Bug
-description: Reportar um defeito em um produto STRATO
+description: Reportar um defeito em um produto E45
 labels: ["tipo:bug"]
 body:
   - type: markdown
